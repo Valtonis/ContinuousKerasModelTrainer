@@ -5,12 +5,13 @@
 
 import os
 
+import matplotlib.pyplot as plt
 import pickle
 import contextlib
 from datetime import datetime
 
 class ContinuousKerasModelTrainer:
-    def __init__(self, model, trainInfiniteGenerator, testFiniteGenerator, storeFolder=None):
+    def __init__(self, model, trainInfiniteGenerator, testFiniteGenerator, storeFolder=None, showLossGraph=True, fitVerbose=1, evaluateVerbose=0):
         self.__model = model
         
         self.__numberOfStepsBeforeTesting = 20
@@ -18,11 +19,15 @@ class ContinuousKerasModelTrainer:
         self.__trainInfiniteGenerator = trainInfiniteGenerator
         self.__testFiniteGenerator = testFiniteGenerator
         
-        self.__showModelOutputDuringTrainingSteps = True
-        
         if storeFolder is None:
             dt = datetime.now()
             self.__storeFolder = "store_" + str(dt.microsecond)
+        
+        self.__showLossGraph = showLossGraph
+        self.__lossValues = []
+        
+        self.__fitVerbose = fitVerbose
+        self.__evaluateVerbose = evaluateVerbose
         
     def train(self, numberOfEpochs=None):
         self.__continueTraining = True
@@ -39,20 +44,22 @@ class ContinuousKerasModelTrainer:
         self.__continueTraining = False
             
     def _trainStep(self):
-        if self.__showModelOutputDuringTrainingSteps == False:
-            with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
-                self.__model.fit_generator(self.__trainInfiniteGenerator, 
-                                           steps_per_epoch=self.__numberOfStepsBeforeTesting, 
-                                           epochs=1, 
-                                           use_multiprocessing=True, 
-                                           class_weight=self.__classWeight)
-        else:
-            self.__model.fit_generator(self.__trainInfiniteGenerator, 
+        # with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
+        self.__model.fit_generator(self.__trainInfiniteGenerator, 
                                        steps_per_epoch=self.__numberOfStepsBeforeTesting, 
                                        epochs=1, 
+                                       workers=4,
                                        use_multiprocessing=True, 
-                                       class_weight=self.__classWeight)
-        loss = self.__model.evaluate_generator(self.__testFiniteGenerator, use_multiprocessing=True)
+                                       class_weight=self.__classWeight, 
+                                       verbose=self.__fitVerbose)
+        loss = self.__model.evaluate_generator(self.__testFiniteGenerator, use_multiprocessing=True, verbose=self.__evaluateVerbose)
+        if type(loss) == "list":
+            self.__lossValues.append(loss[0])
+        else:
+            self.__lossValues.append(loss)
+        if self.__showLossGraph == True:
+            plt.plot(self.__lossValues)
+            plt.show()
         if self.__minimumLoss is None or loss < self.__minimumLoss:
             self.__minimumLoss = loss
             self._saveModel("bestModel")
@@ -62,17 +69,20 @@ class ContinuousKerasModelTrainer:
     def getLossOnTrainData(self):
         if self.__trainFiniteGenerator is None:
             return None
-        loss = self.__model.evaluate_generator(self.__trainFiniteGenerator, use_multiprocessing=True)
+        loss = self.__model.evaluate_generator(self.__trainFiniteGenerator, workers=4,  use_multiprocessing=True)
         return loss
     
     def getLossOnValidationData(self):
-        if self.__trainFiniteGenerator is None:
+        if self.__validationFiniteGenerator is None:
             return None
-        loss = self.__model.evaluate_generator(self.__validationFiniteGenerator, use_multiprocessing=True)
+        loss = self.__model.evaluate_generator(self.__validationFiniteGenerator, workers=4, use_multiprocessing=True)
         return loss
         
     
     def save(self):
+        dirExists = os.path.isdir(self.__storeFolder)
+        if dirExists == False:
+            os.mkdir(os.path.isdir(self.__storeFolder))
         with open(os.path.join(self.__storeFolder, 'data.pickle'), "wb") as fp:
             pickle.dump(self, fp)
         
@@ -87,12 +97,6 @@ class ContinuousKerasModelTrainer:
         return obj
         
     # Setters and Getters:
-    
-    def showModelOutputDuringTrainingSteps(self, val):
-        if val == True:
-            __showModelOutputDuringTrainingSteps = True
-        else:
-            __showModelOutputDuringTrainingSteps = False
             
     def setClassWeight(self, classWeight):
         self.__classWeight = classWeight
@@ -117,12 +121,16 @@ class ContinuousKerasModelTrainer:
     
     __trainInfiniteGenerator = None
     __testFiniteGenerator = None
-    
-    __trainFiniteGenerator = None
     __validationFiniteGenerator = None
     
-    __showModelOutputDuringTrainingSteps = None
+    __trainFiniteGenerator = None
     
     __storeFolder = None
+    
+    __showLossGraph = None
+    __lossValues = None
+    
+    __fitVerbose = None
+    __evaluateVerbose = None
     
 

@@ -4,6 +4,7 @@
 # In[ ]:
 
 import copy
+import mutex
 
 from keras.utils import Sequence
 
@@ -23,13 +24,18 @@ class GeneratorForKerasNetworkFinite(Sequence):
             temporaryStorageSize = self.__len
         self.__temporaryStorageSize = max(temporaryStorageSize, 1)
         
+        self.__getItemMutex = mutex.mutex()
+        
     def __len__(self):
         return self.__len
     
     def __getitem__(self, idx):
+        self.__getItemMutex.lock()
         if self._isBlockLoaded(idx) == False:
             self._loadFollowingBlocks(idx)
-        return self._getLoadedBlock(idx - self.__firstLoadedBlock)
+        res = self._getLoadedBlock(idx - self.__firstLoadedBlock)
+        self.__getItemMutex.unlock()
+        return res
     
     def _isBlockLoaded(self, idx):
         if idx > self.__lastLoadedBlock and idx < self.__firstLoadedBlock:
@@ -89,6 +95,8 @@ class GeneratorForKerasNetworkFinite(Sequence):
     
     __temporaryStorage = None
     __temporaryStorageSize = None
+    
+    __getItemMutex = None
 
 
 

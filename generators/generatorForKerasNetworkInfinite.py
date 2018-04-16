@@ -4,6 +4,7 @@
 # In[ ]:
 
 import copy
+import mutex
 
 from keras.utils import Sequence
 
@@ -27,8 +28,11 @@ class GeneratorForKerasNetworkInfinite(Sequence):
         
         self.__loadNextBlocksOfDataFromIdx = 0
         self._loadNextPieceOfData()
+        
+        self.__nextItemMutex = mutex.mutex()
     
     def __next__(self):
+        self.__nextItemMutex.lock()
         X = None
         y = None
         if self.__loadAllInRam == True:
@@ -47,7 +51,9 @@ class GeneratorForKerasNetworkInfinite(Sequence):
             self.__currentBlock += 1
         else:
             self._loadNextPieceOfData()
+            self.__nextItemMutex.unlock()
             return self.__next__()
+        self.__nextItemMutex.unlock()
         return (X, y)
     
     def _loadNextPieceOfData(self):
@@ -75,6 +81,8 @@ class GeneratorForKerasNetworkInfinite(Sequence):
     __currentIndex = None
     
     __temporaryStorage = None
+    
+    __nextItemMutex = None
 
 
 # In[ ]:
